@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "telegram-link-checker"
+version = "0.1.0"
+description = "High-throughput Telegram bot for checking URL lists"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "aiogram>=3.26,<4",
+  "celery[redis]>=5.5,<6",
+  "httpx[http2]>=0.28,<1",
+  "pydantic-settings>=2.7,<3",
+  "redis[hiredis]>=6,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.25,<1",
+  "ruff>=0.11,<1",
+]
+
+[project.scripts]
+link-checker-bot = "link_checker.bot:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/link_checker"]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:cacheprovider"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/link_checker/bot.py" = ["RUF001"]
+"src/link_checker/reporting.py" = ["RUF001"]
+"src/link_checker/tasks.py" = ["RUF001"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["link_checker"]
+
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*"]
+ignore_missing_imports = true

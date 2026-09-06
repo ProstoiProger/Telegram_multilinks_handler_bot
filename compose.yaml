@@ -1,0 +1,88 @@
+name: telegram-link-checker
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  bot:
+    build:
+      context: .
+      target: runtime
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    command: ["python", "-m", "link_checker.bot"]
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      target: runtime
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    command:
+      - celery
+      - --app=link_checker.celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
+    depends_on:
+      redis:
+        condition: service_healthy
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    stop_grace_period: 30s
+
+  beat:
+    build:
+      context: .
+      target: runtime
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    command:
+      - celery
+      - --app=link_checker.celery_app:celery_app
+      - beat
+      - --loglevel=INFO
+      - --schedule=/tmp/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  test:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: test
+    environment:
+      BOT_TOKEN: "123456:test-token"
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /workspace/src
+    volumes:
+      - .:/workspace:ro
+    working_dir: /workspace
+    command: ["python", "-m", "pytest"]
+
+volumes:
+  redis-data:
