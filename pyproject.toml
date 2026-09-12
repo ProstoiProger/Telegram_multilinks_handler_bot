@@ -14,6 +14,7 @@ dependencies = [
   "httpx[http2]>=0.28,<1",
   "pydantic-settings>=2.7,<3",
   "redis[hiredis]>=6,<7",
+  "XlsxWriter>=3.2,<4",
 ]
 
 [project.optional-dependencies]
@@ -53,5 +54,5 @@ strict = true
 packages = ["link_checker"]
 
 [[tool.mypy.overrides]]
-module = ["celery", "celery.*"]
+module = ["celery", "celery.*", "xlsxwriter", "xlsxwriter.*"]
 ignore_missing_imports = true

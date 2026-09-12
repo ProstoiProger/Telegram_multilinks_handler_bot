@@ -17,7 +17,7 @@ from link_checker.jobs import (
 )
 from link_checker.parser import InputError, parse_url_file
 from link_checker.tasks import check_job
-from link_checker.ui import RESTART, START_SEARCH, STOP, UPLOAD_DATABASE, main_keyboard
+from link_checker.ui import START_SEARCH, STOP, UPLOAD_DATABASE, main_keyboard
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -93,21 +93,19 @@ async def _launch_monitoring(
     message: Message,
     settings: Settings,
     redis: Redis,
-    *,
-    restart: bool,
 ) -> None:
     current = await get_chat_job(redis, message.chat.id)
     if current is None:
         await message.answer("Сначала загрузите базу ссылок.", reply_markup=main_keyboard())
         return
     job_id, job = current
-    if job.get("monitoring") == "1" and not restart:
+    if job.get("monitoring") == "1":
         await message.answer(
             f"Мониторинг задания {job_id} уже запущен.", reply_markup=main_keyboard()
         )
         return
 
-    reset = restart or job.get("status") in {"ready", "completed", "failed"}
+    reset = job.get("status") in {"ready", "completed", "failed"}
     generation = await start_monitoring(
         redis,
         job_id=job_id,
@@ -130,11 +128,8 @@ async def _launch_monitoring(
             reply_markup=main_keyboard(),
         )
         return
-
-
-    action = "перезапущен" if restart else "запущен"
     await message.answer(
-        f"Мониторинг {action}. Задание: {job_id}.\n"
+        f"Мониторинг запущен. Задание: {job_id}.\n"
         f"Недоступные ссылки будут перепроверяться каждые "
         f"{_format_interval(settings.recheck_interval_seconds)}",
         reply_markup=main_keyboard(),
@@ -143,12 +138,7 @@ async def _launch_monitoring(
 
 @router.message(F.text == START_SEARCH)
 async def start_search(message: Message, settings: Settings, redis: Redis) -> None:
-    await _launch_monitoring(message, settings, redis, restart=False)
-
-
-@router.message(F.text == RESTART)
-async def restart_search(message: Message, settings: Settings, redis: Redis) -> None:
-    await _launch_monitoring(message, settings, redis, restart=True)
+    await _launch_monitoring(message, settings, redis)
 
 
 @router.message(F.text == STOP)

@@ -14,7 +14,7 @@ from link_checker.config import get_settings
 from link_checker.jobs import SyncJobStore
 from link_checker.models import LinkState
 from link_checker.parser import InputUrl
-from link_checker.reporting import build_csv, summarize_ru
+from link_checker.reporting import build_xlsx, summarize_ru
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ _RETRYABLE_STATES = {LinkState.BROKEN, LinkState.TIMEOUT, LinkState.NETWORK_ERRO
 
 
 async def _send_report(
-    *, chat_id: int, job_id: str, results_count: int, report: bytes, caption: str
+    *, chat_id: int, job_id: str, cycle: int, report: bytes, caption: str
 ) -> int:
     settings = get_settings()
     bot = Bot(token=settings.bot_token.get_secret_value())
@@ -31,7 +31,7 @@ async def _send_report(
             chat_id=chat_id,
             document=BufferedInputFile(
                 report,
-                filename=f"otchet-ssylki-{job_id}-{results_count}.csv",
+                filename=f"otchet-ssylki-{job_id}-cikl-{cycle}.xlsx",
             ),
             caption=caption,
         )
@@ -93,8 +93,8 @@ async def _check_cycle(
         report_message_id = await _send_report(
             chat_id=chat_id,
             job_id=job_id,
-            results_count=len(results),
-            report=build_csv(results),
+            cycle=cycle + 1,
+            report=build_xlsx(results, job_id=job_id, cycle=cycle + 1),
             caption=(
                 f"Первичная проверка задания {job_id} завершена.\n"
                 f"{summarize_ru(results)}\n"
@@ -105,8 +105,8 @@ async def _check_cycle(
         report_message_id = await _send_report(
             chat_id=chat_id,
             job_id=job_id,
-            results_count=len(results),
-            report=build_csv(results),
+            cycle=cycle + 1,
+            report=build_xlsx(results, job_id=job_id, cycle=cycle + 1),
             caption=(
                 f"Повторная проверка задания {job_id}.\n"
                 f"Восстановились или больше не требуют повторов: "
