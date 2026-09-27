@@ -31,7 +31,7 @@ async def _send_report(
             chat_id=chat_id,
             document=BufferedInputFile(
                 report,
-                filename=f"otchet-ssylki-{job_id}-cikl-{cycle}.xlsx",
+                filename=f"otchet-tme-{job_id}-cikl-{cycle}.xlsx",
             ),
             caption=caption,
         )
@@ -67,7 +67,7 @@ async def _check_cycle(
             store.unschedule(job_id)
             await _send_text(
                 chat_id,
-                f"Задание {job_id}: ссылок для повторной проверки больше нет.",
+                f"Задание {job_id}: username для повторной проверки больше нет.",
             )
         return 0, 0
 
@@ -96,9 +96,9 @@ async def _check_cycle(
             cycle=cycle + 1,
             report=build_xlsx(results, job_id=job_id, cycle=cycle + 1),
             caption=(
-                f"Первичная проверка задания {job_id} завершена.\n"
+                f"Первичная проверка публичных t.me-ссылок завершена. Задание: {job_id}.\n"
                 f"{summarize_ru(results)}\n"
-                f"На повторный контроль поставлено: {len(retry_urls):,}."
+                f"На повторную проверку поставлено: {len(retry_urls):,}."
             ),
         )
     elif len(retry_urls) < previous_pending:
@@ -108,10 +108,10 @@ async def _check_cycle(
             cycle=cycle + 1,
             report=build_xlsx(results, job_id=job_id, cycle=cycle + 1),
             caption=(
-                f"Повторная проверка задания {job_id}.\n"
-                f"Восстановились или больше не требуют повторов: "
+                f"Повторная проверка t.me-ссылок. Задание: {job_id}.\n"
+                f"Стали доступны или больше не требуют повторов: "
                 f"{previous_pending - len(retry_urls):,}.\n"
-                f"Остаются на контроле: {len(retry_urls):,}."
+                f"Остаются на повторной проверке: {len(retry_urls):,}."
             ),
         )
 

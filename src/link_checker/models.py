@@ -19,10 +19,11 @@ class LinkResult:
     is_working: bool
     state: LinkState
     status_code: int | None = None
+    entity_id: int | None = None
     latency_ms: int | None = None
     final_url: str | None = None
+    entity_type: str | None = None
     error: str | None = None
 
     def for_occurrence(self, line_number: int, url: str) -> "LinkResult":
         return replace(self, line_number=line_number, url=url)
-

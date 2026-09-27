@@ -17,7 +17,15 @@ from link_checker.jobs import (
 )
 from link_checker.parser import InputError, parse_url_file
 from link_checker.tasks import check_job
-from link_checker.ui import START_SEARCH, STOP, UPLOAD_DATABASE, main_keyboard
+from link_checker.ui import (
+    LEGACY_START_SEARCH,
+    LEGACY_STOP,
+    LEGACY_UPLOAD_DATABASE,
+    START_SEARCH,
+    STOP,
+    UPLOAD_DATABASE,
+    main_keyboard,
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -28,7 +36,7 @@ _STATUS_RU = {
     "running": "идёт проверка",
     "monitoring": "мониторинг активен",
     "stopped": "мониторинг остановлен",
-    "completed": "все повторно проверяемые ссылки доступны",
+    "completed": "все username из списка сейчас доступны",
     "retry_wait": "ожидание следующей попытки",
     "failed": "ошибка проверки",
     "failed_to_queue": "ошибка постановки в очередь",
@@ -46,8 +54,9 @@ def _format_interval(seconds: int) -> str:
 @router.message(CommandStart())
 async def command_start(message: Message) -> None:
     await message.answer(
-        "Бот проверяет ссылки из TXT-файла и круглосуточно перепроверяет "
-        "недоступные адреса. Сначала загрузите базу, затем запустите поиск.",
+        "Я проверяю публичные t.me-ссылки на пользователей, ботов, каналы и группы. "
+        "Загрузите TXT-файл, затем запустите проверку. Не найденные username и временные "
+        "ошибки Telegram будут перепроверяться автоматически.",
         reply_markup=main_keyboard(),
     )
 
@@ -72,8 +81,8 @@ async def status(message: Message, redis: Redis) -> None:
     interval = _format_interval(int(job.get("interval_seconds", "1800")))
     response = (
         f"Задание {job_id}: {status_name}.\n"
-        f"Всего ссылок: {job.get('total', '?')}; "
-        f"ожидают перепроверки: {job.get('pending', '0')}.\n"
+        f"Всего t.me-ссылок: {job.get('total', '?')}; "
+        f"на повторной проверке: {job.get('pending', '0')}.\n"
         f"Интервал: {interval}; циклов выполнено: {job.get('cycle', '0')}."
     )
     if job.get("error"):
@@ -81,10 +90,12 @@ async def status(message: Message, redis: Redis) -> None:
     await message.answer(response, reply_markup=main_keyboard())
 
 
-@router.message(F.text == UPLOAD_DATABASE)
+@router.message(F.text.in_({UPLOAD_DATABASE, LEGACY_UPLOAD_DATABASE}))
 async def upload_database_prompt(message: Message) -> None:
     await message.answer(
-        "Отправьте TXT-файл в кодировке UTF-8: одна ссылка http:// или https:// на строку.",
+        "Отправьте UTF-8 TXT-файл: одна публичная t.me-ссылка в строке.\n"
+        "Подойдут: https://t.me/username, https://t.me/s/channel и ссылки на публичные посты.\n"
+        "Инвайты и приватные ссылки не проверяются.",
         reply_markup=main_keyboard(),
     )
 
@@ -96,7 +107,7 @@ async def _launch_monitoring(
 ) -> None:
     current = await get_chat_job(redis, message.chat.id)
     if current is None:
-        await message.answer("Сначала загрузите базу ссылок.", reply_markup=main_keyboard())
+        await message.answer("Сначала загрузите список t.me-ссылок.", reply_markup=main_keyboard())
         return
     job_id, job = current
     if job.get("monitoring") == "1":
@@ -129,19 +140,20 @@ async def _launch_monitoring(
         )
         return
     await message.answer(
-        f"Мониторинг запущен. Задание: {job_id}.\n"
-        f"Недоступные ссылки будут перепроверяться каждые "
+        f"Мониторинг t.me-ссылок запущен. Задание: {job_id}.\n"
+        "Первичная проверка уже поставлена в очередь — по завершении я пришлю XLSX-отчёт.\n"
+        f"Не найденные username и временные ошибки будут перепроверяться каждые "
         f"{_format_interval(settings.recheck_interval_seconds)}",
         reply_markup=main_keyboard(),
     )
 
 
-@router.message(F.text == START_SEARCH)
+@router.message(F.text.in_({START_SEARCH, LEGACY_START_SEARCH}))
 async def start_search(message: Message, settings: Settings, redis: Redis) -> None:
     await _launch_monitoring(message, settings, redis)
 
 
-@router.message(F.text == STOP)
+@router.message(F.text.in_({STOP, LEGACY_STOP}))
 async def stop_search(message: Message, settings: Settings, redis: Redis) -> None:
     current = await get_chat_job(redis, message.chat.id)
     if current is None:
@@ -196,7 +208,7 @@ async def document(message: Message, bot: Bot, settings: Settings, redis: Redis)
     except InputError as exc:
         translations = {
             "The file must be UTF-8 encoded.": "Файл должен быть в кодировке UTF-8.",
-            "The file does not contain any links.": "Файл не содержит ссылок.",
+            "The file does not contain any links.": "Файл не содержит t.me-ссылок.",
         }
         error = str(exc)
         if error.startswith("The file contains more than"):
@@ -217,7 +229,7 @@ async def document(message: Message, bot: Bot, settings: Settings, redis: Redis)
     duplicates = len(urls) - unique_count
     duplicate_note = f" Повторов: {duplicates:,}." if duplicates else ""
     await message.answer(
-        f"База загружена: {len(urls):,} ссылок.{duplicate_note}\n"
+        f"Список t.me-ссылок загружен: {len(urls):,}.{duplicate_note}\n"
         f"Задание: {job_id}. Нажмите «{START_SEARCH}».",
         reply_markup=main_keyboard(),
     )
@@ -226,7 +238,8 @@ async def document(message: Message, bot: Bot, settings: Settings, redis: Redis)
 @router.message()
 async def unsupported(message: Message) -> None:
     await message.answer(
-        "Выберите действие на клавиатуре или отправьте TXT-файл со ссылками.",
+        "Не распознал действие. Используйте кнопки ниже или отправьте TXT-файл "
+        "с публичными t.me-ссылками.",
         reply_markup=main_keyboard(),
     )
 

@@ -1,71 +1,70 @@
-import socket
-
-import httpx
 import pytest
 
 from link_checker.checker import LinkChecker
 from link_checker.config import Settings
-from link_checker.models import LinkState
+from link_checker.models import LinkResult, LinkState
 from link_checker.parser import InputUrl
-from link_checker.security import DnsGuard
+from link_checker.security import InvalidUrlError
+from link_checker.telegram_links import extract_public_username
 
 
-async def public_resolver(host: str, port: int) -> list[tuple[object, ...]]:
-    return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+@pytest.mark.parametrize(
+    ("url", "username"),
+    [
+        ("https://t.me/Telegram", "telegram"),
+        ("https://t.me/s/Telegram/123", "telegram"),
+        ("http://telegram.me/Test_User", "test_user"),
+        ("https://www.t.me/TestUser?start=1", "testuser"),
+    ],
+)
+def test_extracts_username_from_public_telegram_link(url: str, username: str) -> None:
+    assert extract_public_username(url) == username
 
 
-def settings() -> Settings:
-    return Settings(bot_token="123456:unit-test", check_concurrency=20)
-
-
-@pytest.mark.asyncio
-async def test_checker_follows_redirects_and_classifies_results() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/redirect":
-            return httpx.Response(302, headers={"location": "/ok"})
-        if request.url.path == "/private":
-            return httpx.Response(403)
-        if request.url.path == "/missing":
-            return httpx.Response(404)
-        return httpx.Response(204)
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        checker = LinkChecker(
-            settings(), client=client, dns_guard=DnsGuard(resolver=public_resolver)
-        )
-        results = await checker.check_all(
-            [
-                InputUrl(1, "https://example.com/redirect"),
-                InputUrl(2, "https://example.com/private"),
-                InputUrl(3, "https://example.com/missing"),
-            ]
-        )
-
-    assert [result.state for result in results] == [
-        LinkState.WORKING,
-        LinkState.RESTRICTED,
-        LinkState.BROKEN,
-    ]
-    assert [result.is_working for result in results] == [True, True, False]
-    assert results[0].final_url == "https://example.com/ok"
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/Telegram",
+        "https://t.me/+privateInvite",
+        "https://t.me/joinchat/privateInvite",
+        "https://t.me/share/url?url=https://example.com",
+        "https://t.me/abc",
+    ],
+)
+def test_rejects_non_public_or_invalid_telegram_link(url: str) -> None:
+    with pytest.raises(InvalidUrlError):
+        extract_public_username(url)
 
 
 @pytest.mark.asyncio
-async def test_checker_only_requests_duplicate_once() -> None:
+async def test_reports_missing_telegram_api_credentials() -> None:
+    checker = LinkChecker(Settings(bot_token="123456:unit-test"))
+    result = (await checker.check_all([InputUrl(1, "https://t.me/Telegram")]))[0]
+
+    assert result.state is LinkState.NETWORK_ERROR
+    assert result.is_working is False
+    assert result.error == "TELEGRAM_API_ID and TELEGRAM_API_HASH are not configured"
+
+
+@pytest.mark.asyncio
+async def test_checker_only_checks_duplicate_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    checker = LinkChecker(
+        Settings(bot_token="123456:unit-test", telegram_api_id=1, telegram_api_hash="x")
+    )
     calls = 0
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    async def fake_resolve(urls: list[InputUrl]) -> list[LinkResult]:
         nonlocal calls
-        calls += 1
-        return httpx.Response(200)
+        calls += len(urls)
+        return [
+            checker._failure(item, LinkState.BROKEN, 0, "Telegram username not found")
+            for item in urls
+        ]
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        checker = LinkChecker(
-            settings(), client=client, dns_guard=DnsGuard(resolver=public_resolver)
-        )
-        results = await checker.check_all(
-            [InputUrl(1, "https://example.com"), InputUrl(9, "https://example.com")]
-        )
+    monkeypatch.setattr(checker, "_resolve_unique", fake_resolve)
+    results = await checker.check_all(
+        [InputUrl(1, "https://t.me/Telegram"), InputUrl(9, "https://t.me/Telegram")]
+    )
 
     assert calls == 1
     assert [result.line_number for result in results] == [1, 9]

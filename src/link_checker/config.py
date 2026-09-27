@@ -12,15 +12,12 @@ class Settings(BaseSettings):
     )
 
     bot_token: SecretStr
+    telegram_api_id: int = Field(default=0, ge=0)
+    telegram_api_hash: SecretStr = SecretStr("")
     redis_url: str = "redis://localhost:6379/0"
 
-    check_concurrency: int = Field(default=300, ge=1, le=2000)
-    check_connect_timeout_seconds: float = Field(default=2.0, gt=0, le=60)
-    check_read_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
+    check_concurrency: int = Field(default=5, ge=1, le=20)
     check_total_timeout_seconds: float = Field(default=5.0, gt=0, le=120)
-    check_retries: int = Field(default=0, ge=0, le=3)
-    check_max_redirects: int = Field(default=5, ge=0, le=20)
-    check_http2: bool = True
 
     max_file_bytes: int = Field(default=2 * 1024 * 1024, ge=1, le=20 * 1024 * 1024)
     max_urls_per_file: int = Field(default=10_000, ge=1, le=100_000)

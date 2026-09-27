@@ -10,3 +10,4 @@ htmlcov/
 links.txt
 .idea/
 outputs/
+tests/fixtures/
