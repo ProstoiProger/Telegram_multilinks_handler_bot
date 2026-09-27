@@ -42,6 +42,18 @@ class FakeStore:
         self.unscheduled = True
 
 
+def test_missing_username_messages_are_deduplicated() -> None:
+    messages = tasks._missing_username_messages(
+        [
+            LinkResult(1, "https://t.me/missing_user", False, LinkState.BROKEN),
+            LinkResult(2, "https://t.me/missing_user", False, LinkState.BROKEN),
+            LinkResult(3, "https://t.me/found_user", True, LinkState.WORKING),
+        ]
+    )
+
+    assert messages == ["Username не найдены:\n• @missing_user"]
+
+
 @pytest.mark.asyncio
 async def test_initial_cycle_retries_only_transient_failures(
     monkeypatch: pytest.MonkeyPatch,
@@ -60,11 +72,13 @@ async def test_initial_cycle_retries_only_transient_failures(
     async def fake_check_all(self: object, input_urls: Sequence[InputUrl]) -> list[LinkResult]:
         return results
 
-    async def fake_send_report(**kwargs: object) -> int:
-        return 42
+    sent: list[dict[str, object]] = []
+
+    async def fake_send_check_result(**kwargs: object) -> None:
+        sent.append(kwargs)
 
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
-    monkeypatch.setattr(tasks, "_send_report", fake_send_report)
+    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
 
     checked, recovered = await tasks._check_cycle("job", 7, store, 123)
 
@@ -76,7 +90,8 @@ async def test_initial_cycle_retries_only_transient_failures(
     assert store.job["status"] == "monitoring"
     assert store.job["pending"] == "2"
     assert store.job["cycle"] == "1"
-    assert store.job["report_message_id"] == "42"
+    assert sent[0]["initial"] is True
+    assert sent[0]["retry_count"] == 2
 
 
 @pytest.mark.asyncio
@@ -94,11 +109,11 @@ async def test_periodic_cycle_stops_when_all_retry_urls_recover(
     async def fake_check_all(self: object, input_urls: Sequence[InputUrl]) -> list[LinkResult]:
         return results
 
-    async def fake_send_report(**kwargs: object) -> int:
-        return 43
+    async def fake_send_check_result(**kwargs: object) -> None:
+        return None
 
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
-    monkeypatch.setattr(tasks, "_send_report", fake_send_report)
+    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
 
     await tasks._check_cycle("job", 7, store, 123)
 

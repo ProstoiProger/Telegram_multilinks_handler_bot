@@ -78,7 +78,7 @@ async def status(message: Message, redis: Redis) -> None:
         job_id, job = current
 
     status_name = _STATUS_RU.get(job.get("status", ""), job.get("status", "неизвестно"))
-    interval = _format_interval(int(job.get("interval_seconds", "1800")))
+    interval = _format_interval(int(job.get("interval_seconds", "60")))
     response = (
         f"Задание {job_id}: {status_name}.\n"
         f"Всего t.me-ссылок: {job.get('total', '?')}; "

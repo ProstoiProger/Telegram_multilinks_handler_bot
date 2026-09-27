@@ -2,9 +2,9 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Sequence
 
 from aiogram import Bot
-from aiogram.types import BufferedInputFile
 from celery import Task
 from redis import Redis
 
@@ -12,32 +12,13 @@ from link_checker.celery_app import celery_app
 from link_checker.checker import LinkChecker
 from link_checker.config import get_settings
 from link_checker.jobs import SyncJobStore
-from link_checker.models import LinkState
+from link_checker.models import LinkResult, LinkState
 from link_checker.parser import InputUrl
-from link_checker.reporting import build_xlsx, summarize_ru
+from link_checker.telegram_links import extract_public_username
 
 logger = logging.getLogger(__name__)
 
 _RETRYABLE_STATES = {LinkState.BROKEN, LinkState.TIMEOUT, LinkState.NETWORK_ERROR}
-
-
-async def _send_report(
-    *, chat_id: int, job_id: str, cycle: int, report: bytes, caption: str
-) -> int:
-    settings = get_settings()
-    bot = Bot(token=settings.bot_token.get_secret_value())
-    try:
-        message = await bot.send_document(
-            chat_id=chat_id,
-            document=BufferedInputFile(
-                report,
-                filename=f"otchet-tme-{job_id}-cikl-{cycle}.xlsx",
-            ),
-            caption=caption,
-        )
-        return message.message_id
-    finally:
-        await bot.session.close()
 
 
 async def _send_text(chat_id: int, text: str) -> None:
@@ -47,6 +28,70 @@ async def _send_text(chat_id: int, text: str) -> None:
         await bot.send_message(chat_id=chat_id, text=text)
     finally:
         await bot.session.close()
+
+
+def _summary(results: Sequence[LinkResult]) -> str:
+    found = sum(result.is_working for result in results)
+    missing = sum(result.state is LinkState.BROKEN for result in results)
+    temporary = sum(
+        result.state in {LinkState.TIMEOUT, LinkState.NETWORK_ERROR} for result in results
+    )
+    invalid = sum(result.state is LinkState.INVALID for result in results)
+    return (
+        f"Проверено: {len(results):,}; найдено: {found:,}; "
+        f"username не найдены: {missing:,}; "
+        f"временные ошибки: {temporary:,}; неподдерживаемые ссылки: {invalid:,}."
+    )
+
+
+def _missing_username_messages(results: Sequence[LinkResult]) -> list[str]:
+    usernames: list[str] = []
+    seen: set[str] = set()
+    for result in results:
+        if result.state is not LinkState.BROKEN:
+            continue
+        try:
+            username = f"@{extract_public_username(result.url)}"
+        except ValueError:
+            username = result.url
+        if username not in seen:
+            seen.add(username)
+            usernames.append(username)
+
+    if not usernames:
+        return []
+
+    messages: list[str] = []
+    current = "Username не найдены:\n"
+    for username in usernames:
+        line = f"• {username}\n"
+        if len(current) + len(line) > 4_000:
+            messages.append(current.rstrip())
+            current = "Username не найдены (продолжение):\n"
+        current += line
+    messages.append(current.rstrip())
+    return messages
+
+
+async def _send_check_result(
+    *,
+    chat_id: int,
+    job_id: str,
+    results: Sequence[LinkResult],
+    initial: bool,
+    retry_count: int,
+) -> None:
+    title = (
+        f"Первичная проверка t.me-ссылок завершена. Задание: {job_id}."
+        if initial
+        else f"Повторная проверка t.me-ссылок завершена. Задание: {job_id}."
+    )
+    await _send_text(
+        chat_id,
+        f"{title}\n{_summary(results)}\nНа повторной проверке: {retry_count:,}.",
+    )
+    for message in _missing_username_messages(results):
+        await _send_text(chat_id, message)
 
 
 async def _check_cycle(
@@ -87,32 +132,21 @@ async def _check_cycle(
     total = int(job["total"])
     working = recovered if initial else previous_working + recovered
     failed = total - working
-    report_message_id: int | None = None
-
     if initial:
-        report_message_id = await _send_report(
+        await _send_check_result(
             chat_id=chat_id,
             job_id=job_id,
-            cycle=cycle + 1,
-            report=build_xlsx(results, job_id=job_id, cycle=cycle + 1),
-            caption=(
-                f"Первичная проверка публичных t.me-ссылок завершена. Задание: {job_id}.\n"
-                f"{summarize_ru(results)}\n"
-                f"На повторную проверку поставлено: {len(retry_urls):,}."
-            ),
+            results=results,
+            initial=True,
+            retry_count=len(retry_urls),
         )
     elif len(retry_urls) < previous_pending:
-        report_message_id = await _send_report(
+        await _send_check_result(
             chat_id=chat_id,
             job_id=job_id,
-            cycle=cycle + 1,
-            report=build_xlsx(results, job_id=job_id, cycle=cycle + 1),
-            caption=(
-                f"Повторная проверка t.me-ссылок. Задание: {job_id}.\n"
-                f"Стали доступны или больше не требуют повторов: "
-                f"{previous_pending - len(retry_urls):,}.\n"
-                f"Остаются на повторной проверке: {len(retry_urls):,}."
-            ),
+            results=results,
+            initial=False,
+            retry_count=len(retry_urls),
         )
 
     if not store.is_current(job_id, generation):
@@ -129,8 +163,6 @@ async def _check_cycle(
         "error": "",
         "last_check_at": time.time(),
     }
-    if report_message_id is not None:
-        values["report_message_id"] = report_message_id
     store.update(job_id, **values)
 
     if not retry_urls:

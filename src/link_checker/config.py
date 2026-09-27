@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     max_file_bytes: int = Field(default=2 * 1024 * 1024, ge=1, le=20 * 1024 * 1024)
     max_urls_per_file: int = Field(default=10_000, ge=1, le=100_000)
     job_ttl_seconds: int = Field(default=86_400, ge=60, le=604_800)
-    recheck_interval_seconds: int = Field(default=1_800, ge=60, le=86_400)
-    monitor_dispatch_interval_seconds: int = Field(default=10, ge=5, le=300)
+    recheck_interval_seconds: int = Field(default=15, ge=15, le=86_400)
+    monitor_dispatch_interval_seconds: int = Field(default=5, ge=5, le=300)
     monitor_lock_timeout_seconds: int = Field(default=700, ge=60, le=3_600)
 
     @property

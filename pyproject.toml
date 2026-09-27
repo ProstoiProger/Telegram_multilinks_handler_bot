@@ -14,7 +14,6 @@ dependencies = [
   "pydantic-settings>=2.7,<3",
   "redis[hiredis]>=6,<7",
   "Telethon>=1.42,<2",
-  "XlsxWriter>=3.2,<4",
 ]
 
 [project.optional-dependencies]
@@ -45,7 +44,6 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/link_checker/bot.py" = ["RUF001"]
-"src/link_checker/reporting.py" = ["RUF001"]
 "src/link_checker/tasks.py" = ["RUF001"]
 
 [tool.mypy]
@@ -54,5 +52,5 @@ strict = true
 packages = ["link_checker"]
 
 [[tool.mypy.overrides]]
-module = ["celery", "celery.*", "xlsxwriter", "xlsxwriter.*"]
+module = ["celery", "celery.*"]
 ignore_missing_imports = true
