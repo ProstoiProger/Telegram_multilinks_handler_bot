@@ -1,3 +1,6 @@
+import time
+from pathlib import Path
+
 import pytest
 
 from link_checker.checker import LinkChecker
@@ -38,7 +41,9 @@ def test_rejects_non_public_or_invalid_telegram_link(url: str) -> None:
 
 @pytest.mark.asyncio
 async def test_reports_missing_telegram_api_credentials() -> None:
-    checker = LinkChecker(Settings(bot_token="123456:unit-test"))
+    checker = LinkChecker(
+        Settings(bot_token="123456:unit-test", telegram_api_id=0, telegram_api_hash="")
+    )
     result = (await checker.check_all([InputUrl(1, "https://t.me/Telegram")]))[0]
 
     assert result.state is LinkState.NETWORK_ERROR
@@ -68,3 +73,52 @@ async def test_checker_only_checks_duplicate_once(monkeypatch: pytest.MonkeyPatc
 
     assert calls == 1
     assert [result.line_number for result in results] == [1, 9]
+
+
+def test_uses_a_persistent_session_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_path = tmp_path / "telethon" / "bot"
+    checker = LinkChecker(
+        Settings(
+            bot_token="123456:unit-test",
+            telegram_api_id=1,
+            telegram_api_hash="x",
+            telegram_session_path=session_path,
+        )
+    )
+    captured: dict[str, object] = {}
+
+    def fake_client(*args: object, **kwargs: object) -> object:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr("link_checker.checker.TelegramClient", fake_client)
+
+    checker._create_client()
+
+    assert session_path.parent.is_dir()
+    assert captured["args"] == (str(session_path), 1, "x")
+    assert captured["kwargs"] == {"flood_sleep_threshold": 0}
+
+
+@pytest.mark.asyncio
+async def test_does_not_call_telegram_while_flood_wait_is_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = LinkChecker(
+        Settings(bot_token="123456:unit-test", telegram_api_id=1, telegram_api_hash="x")
+    )
+    monkeypatch.setattr(LinkChecker, "_flood_wait_until", time.monotonic() + 30)
+
+    def fail_if_client_is_created() -> None:
+        raise AssertionError("Telegram must not be called during FloodWait")
+
+    monkeypatch.setattr(checker, "_create_client", fail_if_client_is_created)
+
+    result = await checker._resolve_unique([InputUrl(1, "https://t.me/Telegram")])
+
+    assert result[0].state is LinkState.TIMEOUT
+    assert result[0].error is not None
+    assert result[0].error.startswith("Telegram flood wait:")

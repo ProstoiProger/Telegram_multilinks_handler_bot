@@ -141,7 +141,8 @@ async def _launch_monitoring(
         return
     await message.answer(
         f"Мониторинг t.me-ссылок запущен. Задание: {job_id}.\n"
-        "Первичная проверка уже поставлена в очередь — по завершении я пришлю XLSX-отчёт.\n"
+        "Первичная проверка уже поставлена в очередь — по завершении я пришлю итог "
+        "и список ненайденных username.\n"
         f"Не найденные username и временные ошибки будут перепроверяться каждые "
         f"{_format_interval(settings.recheck_interval_seconds)}",
         reply_markup=main_keyboard(),

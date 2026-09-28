@@ -7,6 +7,8 @@ __pycache__/
 *.egg-info/
 .coverage
 htmlcov/
+*.session
+*.session-journal
 links.txt
 .idea/
 outputs/

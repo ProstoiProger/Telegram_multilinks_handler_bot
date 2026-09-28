@@ -27,6 +27,15 @@ services:
       redis:
         condition: service_healthy
 
+  session-init:
+    build:
+      context: .
+      target: runtime
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data/telethon && chown -R 10001:10001 /data"]
+    volumes:
+      - telethon-session-data:/data
+
   worker:
     build:
       context: .
@@ -36,15 +45,19 @@ services:
     env_file:
       - path: .env
         required: false
+    volumes:
+      - telethon-session-data:/data
     command:
       - celery
       - --app=link_checker.celery_app:celery_app
       - worker
       - --loglevel=INFO
-      - --concurrency=${CELERY_WORKER_CONCURRENCY:-2}
+      - --concurrency=${CELERY_WORKER_CONCURRENCY:-1}
     depends_on:
       redis:
         condition: service_healthy
+      session-init:
+        condition: service_completed_successfully
     ulimits:
       nofile:
         soft: 65536
@@ -86,3 +99,4 @@ services:
 
 volumes:
   redis-data:
+  telethon-session-data:

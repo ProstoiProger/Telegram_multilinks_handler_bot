@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     bot_token: SecretStr
     telegram_api_id: int = Field(default=0, ge=0)
     telegram_api_hash: SecretStr = SecretStr("")
+    telegram_session_path: Path = Path("/data/telethon/bot")
     redis_url: str = "redis://localhost:6379/0"
 
     check_concurrency: int = Field(default=5, ge=1, le=20)
