@@ -126,28 +126,18 @@ async def _check_cycle(
         for result in results
         if not result.is_working and result.state in _RETRYABLE_STATES
     ]
-    previous_pending = len(urls)
     recovered = sum(result.is_working for result in results)
     previous_working = int(job.get("working", "0"))
     total = int(job["total"])
     working = recovered if initial else previous_working + recovered
     failed = total - working
-    if initial:
-        await _send_check_result(
-            chat_id=chat_id,
-            job_id=job_id,
-            results=results,
-            initial=True,
-            retry_count=len(retry_urls),
-        )
-    elif len(retry_urls) < previous_pending:
-        await _send_check_result(
-            chat_id=chat_id,
-            job_id=job_id,
-            results=results,
-            initial=False,
-            retry_count=len(retry_urls),
-        )
+    await _send_check_result(
+        chat_id=chat_id,
+        job_id=job_id,
+        results=results,
+        initial=initial,
+        retry_count=len(retry_urls),
+    )
 
     if not store.is_current(job_id, generation):
         return len(results), recovered
@@ -230,7 +220,8 @@ def dispatch_due_jobs() -> dict[str, int]:
             if not job or job.get("monitoring") != "1":
                 store.unschedule(job_id)
                 continue
-            interval = int(job.get("interval_seconds", settings.recheck_interval_seconds))
+            # The monitoring cadence is global; apply configuration changes to active jobs too.
+            interval = settings.recheck_interval_seconds
             generation = int(job["generation"])
             store.schedule_next(job_id, interval)
             check_job.apply_async(

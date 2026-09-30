@@ -123,3 +123,28 @@ async def test_periodic_cycle_stops_when_all_retry_urls_recover(
     assert store.job["pending"] == "0"
     assert store.job["working"] == "4"
     assert store.unscheduled is True
+
+
+@pytest.mark.asyncio
+async def test_periodic_cycle_sends_missing_usernames_even_when_nothing_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    urls = [InputUrl(3, "https://t.me/missing_user")]
+    store = FakeStore(urls, cycle=1)
+    result = LinkResult(3, urls[0].url, False, LinkState.BROKEN)
+    sent: list[dict[str, object]] = []
+
+    async def fake_check_all(self: object, input_urls: Sequence[InputUrl]) -> list[LinkResult]:
+        return [result]
+
+    async def fake_send_check_result(**kwargs: object) -> None:
+        sent.append(kwargs)
+
+    monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
+    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
+
+    await tasks._check_cycle("job", 7, store, 123)
+
+    assert len(sent) == 1
+    assert sent[0]["initial"] is False
+    assert sent[0]["results"] == [result]
