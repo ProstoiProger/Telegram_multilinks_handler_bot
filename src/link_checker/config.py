@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     max_urls_per_file: int = Field(default=10_000, ge=1, le=100_000)
     job_ttl_seconds: int = Field(default=86_400, ge=60, le=604_800)
     recheck_interval_seconds: int = Field(default=20, ge=15, le=86_400)
+    working_recheck_interval_seconds: int = Field(default=60, ge=60, le=86_400)
     monitor_dispatch_interval_seconds: int = Field(default=5, ge=5, le=300)
     monitor_lock_timeout_seconds: int = Field(default=700, ge=60, le=3_600)
 

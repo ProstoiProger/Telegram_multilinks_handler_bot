@@ -1,3 +1,4 @@
+import time
 from collections.abc import Sequence
 
 import pytest
@@ -5,6 +6,10 @@ import pytest
 from link_checker import tasks
 from link_checker.models import LinkResult, LinkState
 from link_checker.parser import InputUrl
+
+
+async def _ignore_check_started(**kwargs: object) -> None:
+    return None
 
 
 class FakeStore:
@@ -78,6 +83,7 @@ async def test_initial_cycle_retries_only_transient_failures(
         sent.append(kwargs)
 
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
+    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
     monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
 
     checked, recovered = await tasks._check_cycle("job", 7, store, 123)
@@ -95,12 +101,12 @@ async def test_initial_cycle_retries_only_transient_failures(
 
 
 @pytest.mark.asyncio
-async def test_periodic_cycle_stops_when_all_retry_urls_recover(
+async def test_full_periodic_cycle_keeps_monitoring_when_all_usernames_are_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     urls = [InputUrl(3, "https://example.com/3"), InputUrl(4, "https://example.com/4")]
     store = FakeStore(urls, cycle=1)
-    store.job.update({"total": "6", "working": "2"})
+    store.job.update({"total": "2", "working": "0"})
     results = [
         LinkResult(3, urls[0].url, True, LinkState.WORKING, 200),
         LinkResult(4, urls[1].url, True, LinkState.WORKING, 200),
@@ -113,16 +119,18 @@ async def test_periodic_cycle_stops_when_all_retry_urls_recover(
         return None
 
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
+    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
     monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
 
     await tasks._check_cycle("job", 7, store, 123)
 
     assert store.retry_urls == []
-    assert store.job["status"] == "completed"
-    assert store.job["monitoring"] == "0"
+    assert store.job["status"] == "monitoring"
+    assert store.job["monitoring"] == "1"
     assert store.job["pending"] == "0"
-    assert store.job["working"] == "4"
-    assert store.unscheduled is True
+    assert store.job["working"] == "2"
+    assert store.unscheduled is False
+    assert float(store.job["next_full_check_at"]) > time.time()
 
 
 @pytest.mark.asyncio
@@ -141,6 +149,7 @@ async def test_periodic_cycle_sends_missing_usernames_even_when_nothing_changes(
         sent.append(kwargs)
 
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
+    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
     monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
 
     await tasks._check_cycle("job", 7, store, 123)
@@ -148,3 +157,79 @@ async def test_periodic_cycle_sends_missing_usernames_even_when_nothing_changes(
     assert len(sent) == 1
     assert sent[0]["initial"] is False
     assert sent[0]["results"] == [result]
+
+
+@pytest.mark.asyncio
+async def test_between_full_checks_only_missing_usernames_are_checked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    found_url = InputUrl(1, "https://t.me/found_user")
+    missing_url = InputUrl(2, "https://t.me/missing_user")
+    store = FakeStore([found_url, missing_url], cycle=1)
+    store.retry_urls = [missing_url]
+    store.job.update(
+        {
+            "total": "2",
+            "working": "1",
+            "next_full_check_at": str(time.time() + 60),
+        }
+    )
+    checked: list[InputUrl] = []
+
+    async def fake_check_all(self: object, input_urls: Sequence[InputUrl]) -> list[LinkResult]:
+        checked.extend(input_urls)
+        return [LinkResult(2, missing_url.url, False, LinkState.BROKEN)]
+
+    async def fake_send_check_result(**kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
+    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
+    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
+
+    await tasks._check_cycle("job", 7, store, 123)
+
+    assert checked == [missing_url]
+    assert store.job["working"] == "1"
+    assert store.retry_urls == [missing_url]
+
+
+@pytest.mark.asyncio
+async def test_flood_wait_is_reported_once_and_pauses_future_cycles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url = InputUrl(1, "https://t.me/missing_user")
+    store = FakeStore([url])
+    sent_flood_waits: list[int] = []
+    calls = 0
+
+    async def fake_check_all(self: object, input_urls: Sequence[InputUrl]) -> list[LinkResult]:
+        nonlocal calls
+        calls += 1
+        return [
+            LinkResult(
+                1,
+                url.url,
+                False,
+                LinkState.TIMEOUT,
+                error="Telegram flood wait: 125s",
+            )
+        ]
+
+    async def fake_send_check_result(**kwargs: object) -> None:
+        return None
+
+    async def fake_send_flood_wait(*, chat_id: int, seconds: int) -> None:
+        sent_flood_waits.append(seconds)
+
+    monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
+    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
+    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
+    monkeypatch.setattr(tasks, "_send_flood_wait", fake_send_flood_wait)
+
+    await tasks._check_cycle("job", 7, store, 123)
+    await tasks._check_cycle("job", 7, store, 123)
+
+    assert calls == 1
+    assert sent_flood_waits == [125]
+    assert float(store.job["flood_wait_until"]) > time.time()

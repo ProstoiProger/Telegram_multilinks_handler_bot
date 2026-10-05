@@ -98,7 +98,8 @@ Telegram использует эти параметры для авториза�
 | `TELEGRAM_SESSION_PATH` | `/data/telethon/bot` | Постоянная сессия Telethon; не меняйте путь без необходимости. |
 | `CHECK_CONCURRENCY` | `1` | Число одновременных запросов к Telegram внутри задания. |
 | `CHECK_TOTAL_TIMEOUT_SECONDS` | `5.0` | Тайм-аут одной проверки. |
-| `RECHECK_INTERVAL_SECONDS` | `20` | Интервал повторной проверки. |
+| `RECHECK_INTERVAL_SECONDS` | `20` | Интервал проверки ненайденных username и временных ошибок. |
+| `WORKING_RECHECK_INTERVAL_SECONDS` | `60` | Интервал полной перепроверки найденных username. |
 | `MAX_URLS_PER_FILE` | `10000` | Максимум строк со ссылками. |
 | `JOB_TTL_SECONDS` | `86400` | Срок хранения остановленного задания. |
 

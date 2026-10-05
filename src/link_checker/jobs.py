@@ -116,7 +116,15 @@ async def start_monitoring(
         "updated_at": _now(),
     }
     if restart:
-        mapping.update({"cycle": "0", "pending": "0", "working": "0", "failed": "0"})
+        mapping.update(
+            {
+                "cycle": "0",
+                "pending": "0",
+                "working": "0",
+                "failed": "0",
+                "next_full_check_at": "0",
+            }
+        )
 
     async with redis.pipeline(transaction=True) as pipe:
         pipe.hset(_job_key(job_id), mapping=mapping)

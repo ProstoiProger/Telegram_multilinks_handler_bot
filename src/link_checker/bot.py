@@ -144,7 +144,8 @@ async def _launch_monitoring(
         "Первичная проверка уже поставлена в очередь — по завершении я пришлю итог "
         "и список ненайденных username.\n"
         f"Не найденные username и временные ошибки будут перепроверяться каждые "
-        f"{_format_interval(settings.recheck_interval_seconds)}",
+        f"{_format_interval(settings.recheck_interval_seconds)}, а найденные — каждые "
+        f"{_format_interval(settings.working_recheck_interval_seconds)}.",
         reply_markup=main_keyboard(),
     )
 
