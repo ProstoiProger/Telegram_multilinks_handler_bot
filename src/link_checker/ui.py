@@ -1,13 +1,13 @@
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-UPLOAD_DATABASE = "Загрузить t.me-список 📚"
-START_SEARCH = "Проверить t.me-ссылки 🔍"
-STOP = "Остановить мониторинг"
+UPLOAD_DATABASE = "Загрузка базы📚"
+START_SEARCH = "Начать поиск🔍"
+STOP = "Стоп⛔️"
 
 # Old keyboards remain visible in existing Telegram chats after a bot update.
-LEGACY_UPLOAD_DATABASE = "Загрузка базы 📚"
-LEGACY_START_SEARCH = "Начать поиск 🔍"
-LEGACY_STOP = "Остановить"
+LEGACY_UPLOAD_DATABASE = "Загрузка базы"
+LEGACY_START_SEARCH = "Начать поиск"
+LEGACY_STOP = "Стоп ⛔️"
 
 
 def main_keyboard() -> ReplyKeyboardMarkup:

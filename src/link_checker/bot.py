@@ -93,9 +93,7 @@ async def status(message: Message, redis: Redis) -> None:
 @router.message(F.text.in_({UPLOAD_DATABASE, LEGACY_UPLOAD_DATABASE}))
 async def upload_database_prompt(message: Message) -> None:
     await message.answer(
-        "Отправьте UTF-8 TXT-файл: одна публичная t.me-ссылка в строке.\n"
-        "Подойдут: https://t.me/username, https://t.me/s/channel и ссылки на публичные посты.\n"
-        "Инвайты и приватные ссылки не проверяются.",
+        "Отправьте файл с расширением .txt",
         reply_markup=main_keyboard(),
     )
 
@@ -139,15 +137,6 @@ async def _launch_monitoring(
             reply_markup=main_keyboard(),
         )
         return
-    await message.answer(
-        f"Мониторинг t.me-ссылок запущен. Задание: {job_id}.\n"
-        "Первичная проверка уже поставлена в очередь — по завершении я пришлю итог "
-        "и список ненайденных username.\n"
-        f"Не найденные username и временные ошибки будут перепроверяться каждые "
-        f"{_format_interval(settings.recheck_interval_seconds)}, а найденные — каждые "
-        f"{_format_interval(settings.working_recheck_interval_seconds)}.",
-        reply_markup=main_keyboard(),
-    )
 
 
 @router.message(F.text.in_({START_SEARCH, LEGACY_START_SEARCH}))

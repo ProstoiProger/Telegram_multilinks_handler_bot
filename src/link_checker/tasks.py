@@ -33,15 +33,6 @@ async def _send_text(chat_id: int, text: str) -> None:
         await bot.session.close()
 
 
-async def _send_check_started(*, chat_id: int, job_id: str, full_check: bool) -> None:
-    scope = (
-        "все username: существующие и ненайденные"
-        if full_check
-        else "ненайденные username и временные ошибки"
-    )
-    await _send_text(chat_id, f"🔄 Задание {job_id}: проверяю {scope}.")
-
-
 def _flood_wait_seconds(results: Sequence[LinkResult]) -> int:
     wait_seconds = 0
     for result in results:
@@ -59,20 +50,6 @@ async def _send_flood_wait(*, chat_id: int, seconds: int) -> None:
         chat_id,
         "⚠️ Telegram временно ограничил запросы (FloodWait).\n"
         f"Повторные проверки приостановлены примерно на {minutes} мин.",
-    )
-
-
-def _summary(results: Sequence[LinkResult]) -> str:
-    found = sum(result.is_working for result in results)
-    missing = sum(result.state is LinkState.BROKEN for result in results)
-    temporary = sum(
-        result.state in {LinkState.TIMEOUT, LinkState.NETWORK_ERROR} for result in results
-    )
-    invalid = sum(result.state is LinkState.INVALID for result in results)
-    return (
-        f"Проверено: {len(results):,}; найдено: {found:,}; "
-        f"username не найдены: {missing:,}; "
-        f"временные ошибки: {temporary:,}; неподдерживаемые ссылки: {invalid:,}."
     )
 
 
@@ -94,36 +71,15 @@ def _missing_username_messages(results: Sequence[LinkResult]) -> list[str]:
         return []
 
     messages: list[str] = []
-    current = "Username не найдены:\n"
+    current = ""
     for username in usernames:
         line = f"• {username}\n"
         if len(current) + len(line) > 4_000:
             messages.append(current.rstrip())
-            current = "Username не найдены (продолжение):\n"
+            current = ""
         current += line
     messages.append(current.rstrip())
     return messages
-
-
-async def _send_check_result(
-    *,
-    chat_id: int,
-    job_id: str,
-    results: Sequence[LinkResult],
-    initial: bool,
-    retry_count: int,
-) -> None:
-    title = (
-        f"Первичная проверка t.me-ссылок завершена. Задание: {job_id}."
-        if initial
-        else f"Повторная проверка t.me-ссылок завершена. Задание: {job_id}."
-    )
-    await _send_text(
-        chat_id,
-        f"{title}\n{_summary(results)}\nНа повторной проверке: {retry_count:,}.",
-    )
-    for message in _missing_username_messages(results):
-        await _send_text(chat_id, message)
 
 
 async def _check_cycle(
@@ -148,7 +104,6 @@ async def _check_cycle(
             store.update(job_id, status="monitoring", monitoring=1, pending=0)
         return 0, 0
 
-    await _send_check_started(chat_id=chat_id, job_id=job_id, full_check=full_check)
     results = await LinkChecker(settings).check_all(urls)
     if not store.is_current(job_id, generation):
         logger.info("Отбрасываем устаревший результат задания %s", job_id)
@@ -169,13 +124,8 @@ async def _check_cycle(
     total = int(job["total"])
     working = recovered if full_check else previous_working + recovered
     failed = total - working
-    await _send_check_result(
-        chat_id=chat_id,
-        job_id=job_id,
-        results=results,
-        initial=initial,
-        retry_count=len(retry_urls),
-    )
+    for message in _missing_username_messages(results):
+        await _send_text(chat_id, message)
 
     if not store.is_current(job_id, generation):
         return len(results), recovered

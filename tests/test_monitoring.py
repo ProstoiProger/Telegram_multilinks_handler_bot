@@ -8,7 +8,7 @@ from link_checker.models import LinkResult, LinkState
 from link_checker.parser import InputUrl
 
 
-async def _ignore_check_started(**kwargs: object) -> None:
+async def _ignore_text(chat_id: int, text: str) -> None:
     return None
 
 
@@ -56,7 +56,7 @@ def test_missing_username_messages_are_deduplicated() -> None:
         ]
     )
 
-    assert messages == ["Username не найдены:\n• @missing_user"]
+    assert messages == ["• @missing_user"]
 
 
 @pytest.mark.asyncio
@@ -77,14 +77,13 @@ async def test_initial_cycle_retries_only_transient_failures(
     async def fake_check_all(self: object, input_urls: Sequence[InputUrl]) -> list[LinkResult]:
         return results
 
-    sent: list[dict[str, object]] = []
+    sent_texts: list[str] = []
 
-    async def fake_send_check_result(**kwargs: object) -> None:
-        sent.append(kwargs)
+    async def fake_send_text(chat_id: int, text: str) -> None:
+        sent_texts.append(text)
 
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
-    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
-    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
+    monkeypatch.setattr(tasks, "_send_text", fake_send_text)
 
     checked, recovered = await tasks._check_cycle("job", 7, store, 123)
 
@@ -96,8 +95,7 @@ async def test_initial_cycle_retries_only_transient_failures(
     assert store.job["status"] == "monitoring"
     assert store.job["pending"] == "2"
     assert store.job["cycle"] == "1"
-    assert sent[0]["initial"] is True
-    assert sent[0]["retry_count"] == 2
+    assert sent_texts == ["• https://example.com/3"]
 
 
 @pytest.mark.asyncio
@@ -115,12 +113,8 @@ async def test_full_periodic_cycle_keeps_monitoring_when_all_usernames_are_found
     async def fake_check_all(self: object, input_urls: Sequence[InputUrl]) -> list[LinkResult]:
         return results
 
-    async def fake_send_check_result(**kwargs: object) -> None:
-        return None
-
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
-    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
-    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
+    monkeypatch.setattr(tasks, "_send_text", _ignore_text)
 
     await tasks._check_cycle("job", 7, store, 123)
 
@@ -140,23 +134,20 @@ async def test_periodic_cycle_sends_missing_usernames_even_when_nothing_changes(
     urls = [InputUrl(3, "https://t.me/missing_user")]
     store = FakeStore(urls, cycle=1)
     result = LinkResult(3, urls[0].url, False, LinkState.BROKEN)
-    sent: list[dict[str, object]] = []
+    sent_texts: list[str] = []
 
     async def fake_check_all(self: object, input_urls: Sequence[InputUrl]) -> list[LinkResult]:
         return [result]
 
-    async def fake_send_check_result(**kwargs: object) -> None:
-        sent.append(kwargs)
+    async def fake_send_text(chat_id: int, text: str) -> None:
+        sent_texts.append(text)
 
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
-    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
-    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
+    monkeypatch.setattr(tasks, "_send_text", fake_send_text)
 
     await tasks._check_cycle("job", 7, store, 123)
 
-    assert len(sent) == 1
-    assert sent[0]["initial"] is False
-    assert sent[0]["results"] == [result]
+    assert sent_texts == ["• @missing_user"]
 
 
 @pytest.mark.asyncio
@@ -180,12 +171,8 @@ async def test_between_full_checks_only_missing_usernames_are_checked(
         checked.extend(input_urls)
         return [LinkResult(2, missing_url.url, False, LinkState.BROKEN)]
 
-    async def fake_send_check_result(**kwargs: object) -> None:
-        return None
-
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
-    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
-    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
+    monkeypatch.setattr(tasks, "_send_text", _ignore_text)
 
     await tasks._check_cycle("job", 7, store, 123)
 
@@ -216,15 +203,11 @@ async def test_flood_wait_is_reported_once_and_pauses_future_cycles(
             )
         ]
 
-    async def fake_send_check_result(**kwargs: object) -> None:
-        return None
-
     async def fake_send_flood_wait(*, chat_id: int, seconds: int) -> None:
         sent_flood_waits.append(seconds)
 
     monkeypatch.setattr(tasks.LinkChecker, "check_all", fake_check_all)
-    monkeypatch.setattr(tasks, "_send_check_started", _ignore_check_started)
-    monkeypatch.setattr(tasks, "_send_check_result", fake_send_check_result)
+    monkeypatch.setattr(tasks, "_send_text", _ignore_text)
     monkeypatch.setattr(tasks, "_send_flood_wait", fake_send_flood_wait)
 
     await tasks._check_cycle("job", 7, store, 123)
