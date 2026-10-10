@@ -56,7 +56,7 @@ def test_missing_username_messages_are_deduplicated() -> None:
         ]
     )
 
-    assert messages == ["• @missing_user"]
+    assert messages == ["@missing_user"]
 
 
 @pytest.mark.asyncio
@@ -95,7 +95,7 @@ async def test_initial_cycle_retries_only_transient_failures(
     assert store.job["status"] == "monitoring"
     assert store.job["pending"] == "2"
     assert store.job["cycle"] == "1"
-    assert sent_texts == ["• https://example.com/3"]
+    assert sent_texts == ["https://example.com/3"]
 
 
 @pytest.mark.asyncio
@@ -147,7 +147,7 @@ async def test_periodic_cycle_sends_missing_usernames_even_when_nothing_changes(
 
     await tasks._check_cycle("job", 7, store, 123)
 
-    assert sent_texts == ["• @missing_user"]
+    assert sent_texts == ["@missing_user"]
 
 
 @pytest.mark.asyncio

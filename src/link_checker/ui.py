@@ -1,7 +1,7 @@
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-UPLOAD_DATABASE = "Загрузка базы📚"
-START_SEARCH = "Начать поиск🔍"
+UPLOAD_DATABASE = "Загрузка базы 📚"
+START_SEARCH = "Начать поиск 🔍"
 STOP = "Стоп⛔️"
 
 # Old keyboards remain visible in existing Telegram chats after a bot update.

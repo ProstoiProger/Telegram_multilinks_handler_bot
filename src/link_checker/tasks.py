@@ -73,7 +73,7 @@ def _missing_username_messages(results: Sequence[LinkResult]) -> list[str]:
     messages: list[str] = []
     current = ""
     for username in usernames:
-        line = f"• {username}\n"
+        line = f"{username}\n"
         if len(current) + len(line) > 4_000:
             messages.append(current.rstrip())
             current = ""
