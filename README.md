@@ -75,9 +75,13 @@ Telegram использует эти параметры для авториза�
 
    ```env
    BOT_TOKEN=123456789:токен-бота
+   ALLOWED_TELEGRAM_USER_ID=123456789
    TELEGRAM_API_ID=123456
    TELEGRAM_API_HASH=ваш-api-hash
    ```
+
+   `ALLOWED_TELEGRAM_USER_ID` — числовой ID вашего Telegram-аккаунта. Бот
+   принимает сообщения и отправляет уведомления только в личный чат с этим ID.
 
 3. Запустите сервисы:
 

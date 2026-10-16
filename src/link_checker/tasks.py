@@ -26,6 +26,9 @@ _FLOOD_WAIT_PATTERN = re.compile(r"^Telegram flood wait: (\d+)s$")
 
 async def _send_text(chat_id: int, text: str) -> None:
     settings = get_settings()
+    if chat_id != settings.allowed_telegram_user_id:
+        logger.warning("Blocked notification to unauthorized chat %s", chat_id)
+        return
     bot = Bot(token=settings.bot_token.get_secret_value())
     try:
         await bot.send_message(chat_id=chat_id, text=text)

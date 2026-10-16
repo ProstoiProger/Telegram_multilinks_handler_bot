@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     )
 
     bot_token: SecretStr
+    allowed_telegram_user_id: int = Field(default=0, ge=0)
     telegram_api_id: int = Field(default=0, ge=0)
     telegram_api_hash: SecretStr = SecretStr("")
     telegram_session_path: Path = Path("/data/telethon/bot")

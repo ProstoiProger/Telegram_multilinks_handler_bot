@@ -13,3 +13,5 @@ links.txt
 .idea/
 outputs/
 tests/fixtures/
+tmp/
+output/

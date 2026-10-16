@@ -237,9 +237,17 @@ async def unsupported(message: Message) -> None:
 
 async def run() -> None:
     settings = get_settings()
+    if settings.allowed_telegram_user_id == 0:
+        raise RuntimeError(
+            "ALLOWED_TELEGRAM_USER_ID must be set to the Telegram ID of the bot owner"
+        )
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     bot = Bot(token=settings.bot_token.get_secret_value())
     dispatcher = Dispatcher()
+    router.message.filter(
+        (F.from_user.id == settings.allowed_telegram_user_id)
+        & (F.chat.id == settings.allowed_telegram_user_id)
+    )
     dispatcher.include_router(router)
     try:
         await redis.ping()
